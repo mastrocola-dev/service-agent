@@ -11,9 +11,6 @@ const AgentFile = z.strictObject({
 export type AgentConfig = z.infer<typeof AgentFile> & { system: string }
 
 export async function loadAgent(dir: string): Promise<AgentConfig> {
-  const [raw, system] = await Promise.all([
-    readFile(join(dir, 'agent.json'), 'utf8'),
-    readFile(join(dir, 'system.md'), 'utf8'),
-  ])
+  const [raw, system] = await Promise.all([readFile(join(dir, 'agent.json'), 'utf8'), readFile(join(dir, 'system.md'), 'utf8')])
   return { ...AgentFile.parse(JSON.parse(raw)), system }
 }
