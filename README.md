@@ -31,4 +31,5 @@ Each instance lives in `agents/<name>/`:
 - **Native TypeScript execution.** Node 24 strips types at runtime; no build step. `tsc` runs only as a CI gate. `erasableSyntaxOnly` forbids `enum`, `namespace` and parameter properties.
 - **Own control loop.** The loop, its stop conditions and its instrumentation point are the core of this service, so the SDK tool runner is not used.
 - **One-shot CLI, not a REPL.** The agent is embedded in applications: a task goes in, a result comes out. The integration contract is `run()`; transports (CLI now, async HTTP or queue later) are thin adapters over it.
-- **Minimal dependencies.** `@anthropic-ai/sdk` and `zod` at runtime; CLI built on `node:util` and `node:readline`.
+- **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases.
+- **Minimal dependencies.** `@anthropic-ai/sdk` and `zod` at runtime; CLI built on `node:util` and `node:stream`.
