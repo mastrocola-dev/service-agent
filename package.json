@@ -9,14 +9,17 @@
     "start": "node --env-file-if-exists=.env src/cli.ts",
     "typecheck": "tsc",
     "check": "biome ci",
-    "fix": "biome check --write"
+    "fix": "biome check --write",
+    "test": "node --test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@modelcontextprotocol/client": "^2.1.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@types/node": "^24.19.0",
     "typescript": "^7.0.2"
   }

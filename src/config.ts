@@ -2,12 +2,20 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 
+const McpServer = z.strictObject({
+  command: z.string(),
+  args: z.array(z.string()).default([]),
+  tools: z.array(z.string()).min(1),
+})
+
 const AgentFile = z.strictObject({
   model: z.string(),
   maxSteps: z.int().positive(),
   maxTokens: z.int().positive(),
+  mcpServers: z.record(z.string().regex(/^[a-z0-9-]+$/), McpServer).default({}),
 })
 
+export type McpServer = z.infer<typeof McpServer>
 export type AgentConfig = z.infer<typeof AgentFile> & { system: string }
 
 export async function loadAgent(dir: string): Promise<AgentConfig> {

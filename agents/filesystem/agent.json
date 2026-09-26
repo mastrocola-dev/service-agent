@@ -1,0 +1,12 @@
+{
+  "model": "claude-haiku-4-5",
+  "maxSteps": 10,
+  "maxTokens": 1024,
+  "mcpServers": {
+    "fs": {
+      "command": "node_modules/.bin/mcp-server-filesystem",
+      "args": ["."],
+      "tools": ["list_directory", "directory_tree", "read_text_file", "search_files"]
+    }
+  }
+}
