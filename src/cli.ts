@@ -1,25 +1,23 @@
-import Anthropic from '@anthropic-ai/sdk'
-import type { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages'
-import { createInterface } from 'node:readline/promises'
+import { text } from 'node:stream/consumers'
 import { parseArgs } from 'node:util'
+import Anthropic from '@anthropic-ai/sdk'
 import { loadAgent } from './config.ts'
 import { run } from './loop.ts'
 
-const { values } = parseArgs({ options: { agent: { type: 'string', default: 'default' } } })
+const { values, positionals } = parseArgs({
+  options: { agent: { type: 'string', default: 'default' } },
+  allowPositionals: true,
+})
+
 const config = await loadAgent(`agents/${values.agent}`)
-const client = new Anthropic()
-const messages: MessageParam[] = []
+const task = positionals.join(' ') || (process.stdin.isTTY ? '' : await text(process.stdin))
+if (!task.trim()) throw new Error('No task provided: pass it as an argument or via stdin')
 
-const text = (message: Message) => message.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
+const response = await run(new Anthropic(), config, [{ role: 'user', content: task }])
+if (response.stop_reason !== 'end_turn') throw new Error(`Run ended with stop reason: ${response.stop_reason}`)
 
-const rl = createInterface({ input: process.stdin, output: process.stdout })
-rl.setPrompt('> ')
-rl.prompt()
-
-for await (const line of rl) {
-  if (line.trim()) {
-    messages.push({ role: 'user', content: line })
-    console.log(text(await run(client, config, messages)))
-  }
-  rl.prompt()
-}
+const output = response.content
+  .filter((block) => block.type === 'text')
+  .map((block) => block.text)
+  .join('\n')
+console.log(output)

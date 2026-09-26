@@ -2,16 +2,21 @@
   "name": "service-agent",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/cli.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "check": "biome ci",
+    "fix": "biome check --write"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@types/node": "^24.19.0",
     "typescript": "^7.0.2"
   }
