@@ -30,11 +30,20 @@ Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` i
 
 ```json
 "mcpServers": {
-  "fs": { "command": "node_modules/.bin/mcp-server-filesystem", "args": ["."], "tools": ["read_text_file"] }
+  "docs": { "command": "node", "args": ["../mcp-docs/src/main.ts", "../docs"], "tools": ["read_document"] }
 }
 ```
 
-The `filesystem` instance runs against the reference MCP filesystem server, a dev dependency kept only until the first in-house server replaces it. It is scoped to `src`, `test` and `agents`: never point a filesystem server at the repository root, which holds `.env`.
+The `docs` instance uses [mcp-docs](https://github.com/mastrocola-dev/mcp-docs) and expects sibling checkouts:
+
+```
+mastrocola-dev/
+├── service-agent/
+├── mcp-docs/
+└── docs/
+```
+
+Never give a tool server access to this repository's root: it holds `.env`.
 
 ## Test
 
@@ -42,6 +51,8 @@ The `filesystem` instance runs against the reference MCP filesystem server, a de
 npm test
 npm run test:coverage
 ```
+
+MCP client tests run against a minimal fixture server (`test/fixtures/server.ts`). Tests are selected by the explicit glob `test/**/*.test.ts`, since Node's default patterns would also pick up fixtures.
 
 Coverage uses Node's native V8 coverage. It only reports files loaded during tests, so every source file needs at least one test that loads it. CLI tests spawn the process and cover its contract (exit codes, stdin) without reaching the API; the success path after the model call stays uncovered by design.
 
@@ -56,5 +67,6 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **Tool results are capped per instance.** Results beyond `maxToolResultChars` are truncated with an explicit marker telling the model to narrow the request, so one oversized result cannot exhaust the context window. The cap lives in the loop and applies to any `Toolbox`.
 - **Tool errors go back to the model.** MCP reports failures as `isError` results, forwarded as `is_error` so the model can correct itself; transport failures abort the run.
 - **Servers do not inherit the environment.** The MCP SDK passes only a safe default set of variables, so `ANTHROPIC_API_KEY` never reaches a tool server.
-- **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases.
+- **MCP servers run from sibling checkouts, not packages.** Node refuses type stripping inside `node_modules`, so packaging a server would require a build. Locally the host starts servers from their checkouts; in the cloud each server becomes its own Container App over streamable HTTP.
+- **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases. `lineWidth: 320` is the author's choice: lines are not wrapped by the formatter.
 - **Minimal dependencies.** `@anthropic-ai/sdk`, `@modelcontextprotocol/client` and `zod` at runtime; CLI built on `node:util` and `node:stream`.
