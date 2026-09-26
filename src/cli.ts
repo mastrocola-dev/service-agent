@@ -18,5 +18,8 @@ const toolbox = await connect(config.mcpServers)
 const response = await run(new Anthropic(), config, toolbox, [{ role: 'user', content: task }]).finally(toolbox.close)
 if (response.stop_reason !== 'end_turn') throw new Error(`Run ended with stop reason: ${response.stop_reason}`)
 
-const output = response.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
+const output = response.content
+  .filter((block) => block.type === 'text')
+  .map((block) => block.text)
+  .join('\n')
 console.log(output)
