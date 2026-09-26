@@ -44,14 +44,11 @@ export async function connect(servers: Record<string, McpServer>): Promise<Toolb
     close,
     async call(name, input) {
       const route = routes.get(name)
-      if (!route) return { content: `Tool not allowed: ${name}`, is_error: true }
+      if (!route) return { content: `Tool not allowed: ${name}`, isError: true }
       const result = await route.client.callTool({ name: route.tool.name, arguments: input as Record<string, unknown> })
       return {
-        content: result.content.map((block) => ({
-          type: 'text' as const,
-          text: block.type === 'text' ? block.text : JSON.stringify(block),
-        })),
-        is_error: result.isError,
+        content: result.content.map((block) => (block.type === 'text' ? block.text : JSON.stringify(block))).join('\n'),
+        isError: result.isError ?? false,
       }
     },
   }

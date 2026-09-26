@@ -23,7 +23,7 @@ The CLI runs one task to completion and exits, mirroring how an application invo
 
 Each instance lives in `agents/<name>/`:
 
-- `agent.json`: `model`, `maxSteps`, `maxTokens` and `mcpServers` (strict schema; unknown keys fail)
+- `agent.json`: `model`, `maxSteps`, `maxTokens`, `maxToolResultChars` (default 20000) and `mcpServers` (strict schema; unknown keys fail)
 - `system.md`: system prompt, kept as Markdown for readable diffs
 
 Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` it may use:
@@ -34,7 +34,7 @@ Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` i
 }
 ```
 
-The `filesystem` instance runs against the reference MCP filesystem server, a dev dependency kept only until the first in-house server replaces it.
+The `filesystem` instance runs against the reference MCP filesystem server, a dev dependency kept only until the first in-house server replaces it. It is scoped to `src`, `test` and `agents`: never point a filesystem server at the repository root, which holds `.env`.
 
 ## Test
 
@@ -50,6 +50,7 @@ npm test
 - **Loop depends on a `Toolbox`, not on MCP.** `loop.ts` defines the port; `mcp.ts` implements it. The loop is tested with fakes and knows no protocol.
 - **Tool allowlist is mandatory.** Each server declares the tools an instance may call; unknown names fail at startup and calls outside the list never reach the server. Server annotations such as `readOnlyHint` are hints from the server, not a security boundary.
 - **Tools namespaced as `<server>__<tool>`.** Avoids collisions across servers; server names are restricted to `[a-z0-9-]`.
+- **Tool results are capped per instance.** Results beyond `maxToolResultChars` are truncated with an explicit marker telling the model to narrow the request, so one oversized result cannot exhaust the context window. The cap lives in the loop and applies to any `Toolbox`.
 - **Tool errors go back to the model.** MCP reports failures as `isError` results, forwarded as `is_error` so the model can correct itself; transport failures abort the run.
 - **Servers do not inherit the environment.** The MCP SDK passes only a safe default set of variables, so `ANTHROPIC_API_KEY` never reaches a tool server.
 - **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases.

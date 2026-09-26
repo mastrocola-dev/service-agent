@@ -1,0 +1,198 @@
+diff --git a/README.md b/README.md
+index 7beb134..23fea5d 100644
+--- a/README.md
++++ b/README.md
+@@ -23,7 +23,7 @@ The CLI runs one task to completion and exits, mirroring how an application invo
+ 
+ Each instance lives in `agents/<name>/`:
+ 
+-- `agent.json`: `model`, `maxSteps`, `maxTokens` and `mcpServers` (strict schema; unknown keys fail)
++- `agent.json`: `model`, `maxSteps`, `maxTokens`, `maxToolResultChars` (default 20000) and `mcpServers` (strict schema; unknown keys fail)
+ - `system.md`: system prompt, kept as Markdown for readable diffs
+ 
+ Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` it may use:
+@@ -34,7 +34,7 @@ Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` i
+ }
+ ```
+ 
+-The `filesystem` instance runs against the reference MCP filesystem server, a dev dependency kept only until the first in-house server replaces it.
++The `filesystem` instance runs against the reference MCP filesystem server, a dev dependency kept only until the first in-house server replaces it. It is scoped to `src`, `test` and `agents`: never point a filesystem server at the repository root, which holds `.env`.
+ 
+ ## Test
+ 
+@@ -50,6 +50,7 @@ npm test
+ - **Loop depends on a `Toolbox`, not on MCP.** `loop.ts` defines the port; `mcp.ts` implements it. The loop is tested with fakes and knows no protocol.
+ - **Tool allowlist is mandatory.** Each server declares the tools an instance may call; unknown names fail at startup and calls outside the list never reach the server. Server annotations such as `readOnlyHint` are hints from the server, not a security boundary.
+ - **Tools namespaced as `<server>__<tool>`.** Avoids collisions across servers; server names are restricted to `[a-z0-9-]`.
++- **Tool results are capped per instance.** Results beyond `maxToolResultChars` are truncated with an explicit marker telling the model to narrow the request, so one oversized result cannot exhaust the context window. The cap lives in the loop and applies to any `Toolbox`.
+ - **Tool errors go back to the model.** MCP reports failures as `isError` results, forwarded as `is_error` so the model can correct itself; transport failures abort the run.
+ - **Servers do not inherit the environment.** The MCP SDK passes only a safe default set of variables, so `ANTHROPIC_API_KEY` never reaches a tool server.
+ - **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases.
+diff --git a/agents/filesystem/agent.json b/agents/filesystem/agent.json
+index 7093eff..8b2b09b 100644
+--- a/agents/filesystem/agent.json
++++ b/agents/filesystem/agent.json
+@@ -5,8 +5,8 @@
+   "mcpServers": {
+     "fs": {
+       "command": "node_modules/.bin/mcp-server-filesystem",
+-      "args": ["."],
+-      "tools": ["list_directory", "directory_tree", "read_text_file", "search_files"]
++      "args": ["src", "test", "agents"],
++      "tools": ["list_allowed_directories", "list_directory", "directory_tree", "read_text_file", "search_files"]
+     }
+   }
+ }
+diff --git a/src/config.ts b/src/config.ts
+index afb982c..03f9a0d 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -12,6 +12,7 @@ const AgentFile = z.strictObject({
+   model: z.string(),
+   maxSteps: z.int().positive(),
+   maxTokens: z.int().positive(),
++  maxToolResultChars: z.int().positive().default(20_000),
+   mcpServers: z.record(z.string().regex(/^[a-z0-9-]+$/), McpServer).default({}),
+ })
+ 
+diff --git a/src/loop.ts b/src/loop.ts
+index 8ab29b0..9aa21a5 100644
+--- a/src/loop.ts
++++ b/src/loop.ts
+@@ -1,12 +1,16 @@
+ import type Anthropic from '@anthropic-ai/sdk'
+-import type { Message, MessageParam, Tool, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages'
++import type { Message, MessageParam, Tool } from '@anthropic-ai/sdk/resources/messages'
+ import type { AgentConfig } from './config.ts'
+ 
++export type ToolResult = { content: string; isError: boolean }
++
+ export type Toolbox = {
+   definitions: Tool[]
+-  call: (name: string, input: unknown) => Promise<Pick<ToolResultBlockParam, 'content' | 'is_error'>>
++  call: (name: string, input: unknown) => Promise<ToolResult>
+ }
+ 
++const truncate = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max)}\n[truncated: ${max} of ${text.length} chars; narrow the request]`)
++
+ export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolbox, messages: MessageParam[]): Promise<Message> {
+   for (let step = 0; step < config.maxSteps; step++) {
+     const response = await client.messages.create({
+@@ -21,11 +25,15 @@ export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolb
+ 
+     const calls = response.content.filter((block) => block.type === 'tool_use')
+     const results = await Promise.all(
+-      calls.map(async (call) => ({
+-        type: 'tool_result' as const,
+-        tool_use_id: call.id,
+-        ...(await toolbox.call(call.name, call.input)),
+-      })),
++      calls.map(async (call) => {
++        const result = await toolbox.call(call.name, call.input)
++        return {
++          type: 'tool_result' as const,
++          tool_use_id: call.id,
++          content: truncate(result.content, config.maxToolResultChars),
++          is_error: result.isError,
++        }
++      }),
+     )
+     messages.push({ role: 'user', content: results })
+   }
+diff --git a/src/mcp.ts b/src/mcp.ts
+index 1818cd6..e1e4a82 100644
+--- a/src/mcp.ts
++++ b/src/mcp.ts
+@@ -44,14 +44,11 @@ export async function connect(servers: Record<string, McpServer>): Promise<Toolb
+     close,
+     async call(name, input) {
+       const route = routes.get(name)
+-      if (!route) return { content: `Tool not allowed: ${name}`, is_error: true }
++      if (!route) return { content: `Tool not allowed: ${name}`, isError: true }
+       const result = await route.client.callTool({ name: route.tool.name, arguments: input as Record<string, unknown> })
+       return {
+-        content: result.content.map((block) => ({
+-          type: 'text' as const,
+-          text: block.type === 'text' ? block.text : JSON.stringify(block),
+-        })),
+-        is_error: result.isError,
++        content: result.content.map((block) => (block.type === 'text' ? block.text : JSON.stringify(block))).join('\n'),
++        isError: result.isError ?? false,
+       }
+     },
+   }
+diff --git a/test/loop.test.ts b/test/loop.test.ts
+index 9432250..6b0cb16 100644
+--- a/test/loop.test.ts
++++ b/test/loop.test.ts
+@@ -5,8 +5,8 @@ import type { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages
+ import type { AgentConfig } from '../src/config.ts'
+ import { run, type Toolbox } from '../src/loop.ts'
+ 
+-const config: AgentConfig = { model: 'test', maxSteps: 2, maxTokens: 100, mcpServers: {}, system: '' }
+-const toolbox: Toolbox = { definitions: [], call: async (name) => ({ content: `ran ${name}` }) }
++const config: AgentConfig = { model: 'test', maxSteps: 2, maxTokens: 100, maxToolResultChars: 20, mcpServers: {}, system: '' }
++const toolbox: Toolbox = { definitions: [], call: async (name) => ({ content: `ran ${name}`, isError: false }) }
+ 
+ const message = (stop_reason: string, content: unknown[] = []) => ({ stop_reason, content }) as unknown as Message
+ const toolUse = message('tool_use', [{ type: 'tool_use', id: 't1', name: 'fs__list', input: {} }])
+@@ -25,10 +25,27 @@ test('feeds tool results back to the model', async () => {
+   await run(scripted(toolUse, message('end_turn')), config, toolbox, messages)
+   assert.deepEqual(messages[2], {
+     role: 'user',
+-    content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ran fs__list' }],
++    content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ran fs__list', is_error: false }],
+   })
+ })
+ 
+ test('throws on step limit', async () => {
+   await assert.rejects(run(scripted(toolUse, toolUse), config, toolbox, task()), /Step limit reached: 2/)
+ })
++
++test('truncates tool results beyond maxToolResultChars', async () => {
++  const messages = task()
++  const verbose: Toolbox = { definitions: [], call: async () => ({ content: 'x'.repeat(25), isError: false }) }
++  await run(scripted(toolUse, message('end_turn')), config, verbose, messages)
++  assert.deepEqual(messages[2], {
++    role: 'user',
++    content: [
++      {
++        type: 'tool_result',
++        tool_use_id: 't1',
++        content: `${'x'.repeat(20)}\n[truncated: 20 of 25 chars; narrow the request]`,
++        is_error: false,
++      },
++    ],
++  })
++})
+diff --git a/test/mcp.test.ts b/test/mcp.test.ts
+index 7b8a544..d7d43d2 100644
+--- a/test/mcp.test.ts
++++ b/test/mcp.test.ts
+@@ -3,7 +3,7 @@ import { after, test } from 'node:test'
+ import { connect } from '../src/mcp.ts'
+ 
+ const toolbox = await connect({
+-  fs: { command: 'node_modules/.bin/mcp-server-filesystem', args: ['.'], tools: ['list_directory'] },
++  fs: { command: 'node_modules/.bin/mcp-server-filesystem', args: ['src'], tools: ['list_directory'] },
+ })
+ after(toolbox.close)
+ 
+@@ -16,14 +16,14 @@ test('exposes only allowlisted tools, namespaced by server', () => {
+ 
+ test('calls an allowlisted tool', async () => {
+   const result = await toolbox.call('fs__list_directory', { path: '.' })
+-  assert.match(JSON.stringify(result.content), /README\.md/)
++  assert.match(result.content, /loop\.ts/)
+ })
+ 
+ test('rejects a tool outside the allowlist without reaching the server', async () => {
+   const result = await toolbox.call('fs__write_file', { path: 'x', content: 'x' })
+-  assert.equal(result.is_error, true)
++  assert.equal(result.isError, true)
+ })
+ 
+ test('fails to connect when the allowlist names an unknown tool', async () => {
+-  await assert.rejects(connect({ fs: { command: 'node_modules/.bin/mcp-server-filesystem', args: ['.'], tools: ['nope'] } }), /Unknown tools on fs: nope/)
++  await assert.rejects(connect({ fs: { command: 'node_modules/.bin/mcp-server-filesystem', args: ['src'], tools: ['nope'] } }), /Unknown tools on fs: nope/)
+ })

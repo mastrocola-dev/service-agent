@@ -12,6 +12,7 @@ const AgentFile = z.strictObject({
   model: z.string(),
   maxSteps: z.int().positive(),
   maxTokens: z.int().positive(),
+  maxToolResultChars: z.int().positive().default(20_000),
   mcpServers: z.record(z.string().regex(/^[a-z0-9-]+$/), McpServer).default({}),
 })
 

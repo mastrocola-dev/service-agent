@@ -1,11 +1,15 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import type { Message, MessageParam, Tool, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages'
+import type { Message, MessageParam, Tool } from '@anthropic-ai/sdk/resources/messages'
 import type { AgentConfig } from './config.ts'
+
+export type ToolResult = { content: string; isError: boolean }
 
 export type Toolbox = {
   definitions: Tool[]
-  call: (name: string, input: unknown) => Promise<Pick<ToolResultBlockParam, 'content' | 'is_error'>>
+  call: (name: string, input: unknown) => Promise<ToolResult>
 }
+
+const truncate = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max)}\n[truncated: ${max} of ${text.length} chars; narrow the request]`)
 
 export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolbox, messages: MessageParam[]): Promise<Message> {
   for (let step = 0; step < config.maxSteps; step++) {
@@ -21,11 +25,15 @@ export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolb
 
     const calls = response.content.filter((block) => block.type === 'tool_use')
     const results = await Promise.all(
-      calls.map(async (call) => ({
-        type: 'tool_result' as const,
-        tool_use_id: call.id,
-        ...(await toolbox.call(call.name, call.input)),
-      })),
+      calls.map(async (call) => {
+        const result = await toolbox.call(call.name, call.input)
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: call.id,
+          content: truncate(result.content, config.maxToolResultChars),
+          is_error: result.isError,
+        }
+      }),
     )
     messages.push({ role: 'user', content: results })
   }
