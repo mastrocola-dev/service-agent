@@ -40,7 +40,10 @@ The `filesystem` instance runs against the reference MCP filesystem server, a de
 
 ```sh
 npm test
+npm run test:coverage
 ```
+
+Coverage uses Node's native V8 coverage. It only reports files loaded during tests, so every source file needs at least one test that loads it. CLI tests spawn the process and cover its contract (exit codes, stdin) without reaching the API; the success path after the model call stays uncovered by design.
 
 ## Decisions
 

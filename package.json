@@ -10,7 +10,8 @@
     "typecheck": "tsc",
     "check": "biome ci",
     "fix": "biome check --write",
-    "test": "node --test"
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='test/**'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
