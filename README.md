@@ -47,6 +47,23 @@ mastrocola-dev/
 
 Never give a tool server access to this repository's root: it holds `.env`.
 
+## Traces
+
+Every run writes `traces/<runId>.jsonl` (override with `TRACE_DIR`) and prints its path on stderr. One JSON object per line, appended as it happens, so a failed run keeps everything up to the failure:
+
+| Event | Fields |
+|---|---|
+| `run.start` | `agent`, `model` |
+| `model.call` | `step`, served `model`, `latencyMs`, `stopReason`, `usage` (`input`, `output`, `cacheWrite`, `cacheRead`), `costUsd` |
+| `tool.call` | `step`, `name`, `input`, `latencyMs`, `resultChars`, `truncated`, `isError` |
+| `run.end` | `status` (`ok` or `error`), `error`, `durationMs`, total `usage`, total `costUsd` |
+
+Prompts, answers and tool results are never written, only their sizes. Cost comes from `pricing.json` (USD per million tokens, with source and retrieval date) at write time; models missing from the table get `costUsd: null`. Update the table when prices change or a new model is adopted.
+
+```sh
+jq -c 'select(.type == "tool.call") | [.name, .resultChars, .truncated]' traces/*.jsonl
+```
+
 ## Test
 
 ```sh
@@ -65,6 +82,8 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **One-shot CLI, not a REPL.** The agent is embedded in applications: a task goes in, a result comes out. The integration contract is `run()`; transports (CLI now, async HTTP or queue later) are thin adapters over it.
 - **Structured results through native JSON outputs.** An instance with `output.schema.json` sends it as `output_config.format`; constrained decoding applies to the final answer only, so tool calls are unaffected. The response is parsed, not validated locally: the API rejects invalid schemas, non-`end_turn` stops already fail the run, and a validator would only turn enum casing variance into a failed run.
 - **`output()` owns result extraction.** Stop-reason handling and parsing live next to the loop, so every transport (CLI now, HTTP or queue later) returns results the same way.
+- **Traces as JSON Lines through a `Tracer` port.** The loop emits model and tool calls; `trace.ts` appends them synchronously, so each event is on disk before the next step. Cost is computed when written, because a trace is a historical record: recomputing with a later price table would misstate past runs. An OpenTelemetry exporter can replace the file tracer later without touching the loop.
+- **`run()` takes a `Runtime`.** Client, toolbox and tracer travel together as the set every transport assembles.
 - **Loop depends on a `Toolbox`, not on MCP.** `loop.ts` defines the port; `mcp.ts` implements it. The loop is tested with fakes and knows no protocol.
 - **Tool allowlist is mandatory.** Each server declares the tools an instance may call; unknown names fail at startup and calls outside the list never reach the server. Server annotations such as `readOnlyHint` are hints from the server, not a security boundary.
 - **Tools namespaced as `<server>__<tool>`.** Avoids collisions across servers; server names are restricted to `[a-z0-9-]`.

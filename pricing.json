@@ -1,0 +1,7 @@
+{
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "retrieved": "2026-09-28",
+  "usdPerMTok": {
+    "claude-haiku-4-5": { "input": 1, "output": 5, "cacheWrite": 1.25, "cacheRead": 0.1 }
+  }
+}
