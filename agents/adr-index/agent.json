@@ -1,0 +1,12 @@
+{
+  "model": "claude-haiku-4-5",
+  "maxSteps": 10,
+  "maxTokens": 2048,
+  "mcpServers": {
+    "docs": {
+      "command": "node",
+      "args": ["../mcp-docs/src/main.ts", "../docs"],
+      "tools": ["list_documents", "read_document"]
+    }
+  }
+}

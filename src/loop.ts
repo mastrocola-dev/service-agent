@@ -19,6 +19,7 @@ export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolb
       system: config.system,
       tools: toolbox.definitions,
       messages,
+      ...(config.outputSchema && { output_config: { format: { type: 'json_schema' as const, schema: config.outputSchema } } }),
     })
     messages.push({ role: 'assistant', content: response.content })
     if (response.stop_reason !== 'tool_use') return response
@@ -38,4 +39,13 @@ export async function run(client: Anthropic, config: AgentConfig, toolbox: Toolb
     messages.push({ role: 'user', content: results })
   }
   throw new Error(`Step limit reached: ${config.maxSteps}`)
+}
+
+export function output(message: Message, config: AgentConfig): unknown {
+  if (message.stop_reason !== 'end_turn') throw new Error(`Run ended with stop reason: ${message.stop_reason}`)
+  const text = message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+  return config.outputSchema ? JSON.parse(text) : text
 }

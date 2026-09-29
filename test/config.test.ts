@@ -8,10 +8,11 @@ import { loadAgent } from '../src/config.ts'
 const base = { model: 'test', maxSteps: 1, maxTokens: 1 }
 const server = { command: 'server', tools: ['tool'] }
 
-const instance = async (agent: object) => {
+const instance = async (agent: object, outputSchema?: unknown) => {
   const dir = await mkdtemp(join(tmpdir(), 'agent-'))
   await writeFile(join(dir, 'agent.json'), JSON.stringify(agent))
   await writeFile(join(dir, 'system.md'), 'prompt')
+  if (outputSchema !== undefined) await writeFile(join(dir, 'output.schema.json'), JSON.stringify(outputSchema))
   return dir
 }
 
@@ -39,4 +40,14 @@ test('rejects server names outside [a-z0-9-]', async () => {
 
 test('rejects an empty tool allowlist', async () => {
   await assert.rejects(loadAgent(await instance({ ...base, mcpServers: { fs: { ...server, tools: [] } } })), /tools/)
+})
+
+test('reads the output schema when present', async () => {
+  const schema = { type: 'object', properties: {}, additionalProperties: false }
+  const config = await loadAgent(await instance(base, schema))
+  assert.deepEqual(config.outputSchema, schema)
+})
+
+test('rejects an output schema that is not an object', async () => {
+  await assert.rejects(loadAgent(await instance(base, ['not', 'an', 'object'])))
 })

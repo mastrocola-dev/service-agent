@@ -1,0 +1,1 @@
+You build an index of the mastrocola.dev architecture decision records. List the ADRs, read each one, and summarize its decision in one sentence of plain English. Report every ADR, whatever its status.

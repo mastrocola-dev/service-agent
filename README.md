@@ -8,6 +8,7 @@ Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see `
 npm ci
 echo "ANTHROPIC_API_KEY=..." > .env
 npm start -- --agent default "summarize the input"
+npm start -- --agent adr-index "Index all ADRs"
 cat input.md | npm start -- --agent default
 ```
 
@@ -16,7 +17,7 @@ cat input.md | npm start -- --agent default
 The CLI runs one task to completion and exits, mirroring how an application invokes the agent.
 
 - Input: positional argument, or stdin when no argument is given
-- Output: final text on stdout; diagnostics on stderr
+- Output: final text on stdout, or compact single-line JSON when the instance declares an output schema; diagnostics on stderr
 - Exit code: `0` on `end_turn`; `1` on invalid config, API failure, step limit or any other stop reason
 
 ## Agent instances
@@ -25,6 +26,7 @@ Each instance lives in `agents/<name>/`:
 
 - `agent.json`: `model`, `maxSteps`, `maxTokens`, `maxToolResultChars` (default 20000) and `mcpServers` (strict schema; unknown keys fail)
 - `system.md`: system prompt, kept as Markdown for readable diffs
+- `output.schema.json` (optional): JSON Schema of the result. It is the instance's published contract: consumers can generate types from it. Structured outputs apply the [JSON Schema subset](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#json-schema-limitations) supported by the API; unsupported keywords fail the first call with a 400. Compare `enum` values case-insensitively, since capitalization is not guaranteed.
 
 Each entry in `mcpServers` starts a stdio MCP server and must list the `tools` it may use:
 
@@ -61,6 +63,8 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **Native TypeScript execution.** Node 24 strips types at runtime; no build step. `tsc` runs only as a CI gate. `erasableSyntaxOnly` forbids `enum`, `namespace` and parameter properties.
 - **Own control loop.** The loop, its stop conditions and its instrumentation point are the core of this service, so the SDK tool runner is not used.
 - **One-shot CLI, not a REPL.** The agent is embedded in applications: a task goes in, a result comes out. The integration contract is `run()`; transports (CLI now, async HTTP or queue later) are thin adapters over it.
+- **Structured results through native JSON outputs.** An instance with `output.schema.json` sends it as `output_config.format`; constrained decoding applies to the final answer only, so tool calls are unaffected. The response is parsed, not validated locally: the API rejects invalid schemas, non-`end_turn` stops already fail the run, and a validator would only turn enum casing variance into a failed run.
+- **`output()` owns result extraction.** Stop-reason handling and parsing live next to the loop, so every transport (CLI now, HTTP or queue later) returns results the same way.
 - **Loop depends on a `Toolbox`, not on MCP.** `loop.ts` defines the port; `mcp.ts` implements it. The loop is tested with fakes and knows no protocol.
 - **Tool allowlist is mandatory.** Each server declares the tools an instance may call; unknown names fail at startup and calls outside the list never reach the server. Server annotations such as `readOnlyHint` are hints from the server, not a security boundary.
 - **Tools namespaced as `<server>__<tool>`.** Avoids collisions across servers; server names are restricted to `[a-z0-9-]`.

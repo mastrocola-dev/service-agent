@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "adrs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "ADR identifier, e.g. ADR-001" },
+          "title": { "type": "string", "description": "Title without the identifier prefix" },
+          "status": { "type": "string", "enum": ["Proposed", "Accepted", "Deprecated", "Superseded"] },
+          "decision": { "type": "string", "description": "One-sentence summary of the decision" },
+          "path": { "type": "string", "description": "Document path, e.g. adr/001-multi-repo.md" }
+        },
+        "required": ["id", "title", "status", "decision", "path"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["adrs"],
+  "additionalProperties": false
+}
