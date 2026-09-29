@@ -1,6 +1,6 @@
 # service-agent
 
-Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see `docs/architecture/agent-v1.md` and ADR-003.
+Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see [agent-v1](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-v1.md), [ADR-003](https://github.com/mastrocola-dev/docs/blob/main/adr/003-language-llm-rag.md) and [ADR-004](https://github.com/mastrocola-dev/docs/blob/main/adr/004-typescript-without-build.md).
 
 ## Run
 
