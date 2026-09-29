@@ -24,7 +24,7 @@ test('leaves cost empty for models outside the table', () => {
 test('writes one JSON line per event with run totals', async () => {
   const tracer = fileTracer(await mkdtemp(join(tmpdir(), 'traces-')), 'docs', 'claude-haiku-4-5')
   tracer.emit({ type: 'model.call', step: 0, model: 'served', latencyMs: 1, stopReason: 'tool_use', usage })
-  tracer.emit({ type: 'tool.call', step: 0, name: 'docs__read', input: {}, latencyMs: 1, resultChars: 3, truncated: false, isError: false })
+  tracer.emit({ type: 'tool.call', step: 0, name: 'docs__read', input: {}, latencyMs: 1, resultChars: 3, truncated: false, isError: false, timedOut: false })
   tracer.emit({ type: 'model.call', step: 1, model: 'served', latencyMs: 1, stopReason: 'end_turn', usage })
   tracer.end()
 

@@ -4,6 +4,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { McpServer } from './config.ts'
 import type { Toolbox } from './loop.ts'
 
+const maxTimerDelay = 2 ** 31 - 1
+
 async function open(name: string, server: McpServer) {
   const client = new Client({ name: 'service-agent', version: '0.1.0' })
   try {
@@ -42,10 +44,10 @@ export async function connect(servers: Record<string, McpServer>): Promise<Toolb
   return {
     definitions,
     close,
-    async call(name, input) {
+    async call(name, input, signal) {
       const route = routes.get(name)
       if (!route) return { content: `Tool not allowed: ${name}`, isError: true }
-      const result = await route.client.callTool({ name: route.tool.name, arguments: input as Record<string, unknown> })
+      const result = await route.client.callTool({ name: route.tool.name, arguments: input as Record<string, unknown> }, { signal, timeout: maxTimerDelay })
       return {
         content: result.content.map((block) => (block.type === 'text' ? block.text : JSON.stringify(block))).join('\n'),
         isError: result.isError ?? false,

@@ -13,6 +13,9 @@ const AgentFile = z.strictObject({
   maxSteps: z.int().positive(),
   maxTokens: z.int().positive(),
   maxToolResultChars: z.int().positive().default(20_000),
+  maxRunTokens: z.int().positive().optional(),
+  runTimeoutMs: z.int().positive().default(120_000),
+  toolTimeoutMs: z.int().positive().default(30_000),
   mcpServers: z.record(z.string().regex(/^[a-z0-9-]+$/), McpServer).default({}),
 })
 

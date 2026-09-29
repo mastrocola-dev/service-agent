@@ -5,7 +5,7 @@ import pricing from '../pricing.json' with { type: 'json' }
 
 export type Usage = { input: number; output: number; cacheWrite: number; cacheRead: number }
 
-export type TraceEvent = { type: 'model.call'; step: number; model: string; latencyMs: number; stopReason: string | null; usage: Usage } | { type: 'tool.call'; step: number; name: string; input: unknown; latencyMs: number; resultChars: number; truncated: boolean; isError: boolean }
+export type TraceEvent = { type: 'model.call'; step: number; model: string; latencyMs: number; stopReason: string | null; usage: Usage } | { type: 'tool.call'; step: number; name: string; input: unknown; latencyMs: number; resultChars: number; truncated: boolean; isError: boolean; timedOut: boolean }
 
 export type Tracer = { emit: (event: TraceEvent) => void }
 

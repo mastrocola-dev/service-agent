@@ -20,6 +20,8 @@ test('applies defaults and reads the system prompt', async () => {
   assert.deepEqual(await loadAgent(await instance(base)), {
     ...base,
     maxToolResultChars: 20_000,
+    runTimeoutMs: 120_000,
+    toolTimeoutMs: 30_000,
     mcpServers: {},
     system: 'prompt',
   })
