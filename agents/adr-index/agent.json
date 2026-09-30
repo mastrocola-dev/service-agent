@@ -2,6 +2,7 @@
   "model": "claude-haiku-4-5",
   "maxSteps": 10,
   "maxTokens": 2048,
+  "maxRunTokens": 100000,
   "mcpServers": {
     "docs": {
       "command": "node",
