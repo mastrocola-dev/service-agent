@@ -21,3 +21,49 @@ jobs:
       - run: npm run check
       - run: npm run typecheck
       - run: npm run test:coverage
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --omit=dev
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          chmod -R a+rX .
+          zip -qr "$RUNNER_TEMP/worker.zip" agents src node_modules host.json package.json pricing.json
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          az functionapp deployment source config-zip --resource-group rg-portfolio-dev --name '${{ vars.FUNCTION_APP_NAME }}' --src "$RUNNER_TEMP/worker.zip" --output none
+
+      - name: Confirm the host loaded the function
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            functions=$(az functionapp function list --resource-group rg-portfolio-dev --name '${{ vars.FUNCTION_APP_NAME }}' --query '[].name' --output tsv || true)
+            if grep -q 'worker' <<< "$functions"; then exit 0; fi
+            sleep 20
+          done
+          echo '::error::The function app lists no worker function: the host did not load the package'
+          exit 1
