@@ -18,6 +18,10 @@ export function cost(model: string, usage: Usage) {
   return Number((usd / 1_000_000).toFixed(6))
 }
 
+export function add(total: Usage, usage: Usage) {
+  for (const key of Object.keys(total) as (keyof Usage)[]) total[key] += usage[key]
+}
+
 export function fileTracer(dir: string, agent: string, model: string) {
   const runId = `${new Date().toISOString().replaceAll(':', '-')}-${randomBytes(4).toString('hex')}`
   const path = join(dir, `${runId}.jsonl`)
@@ -32,7 +36,7 @@ export function fileTracer(dir: string, agent: string, model: string) {
     path,
     emit(event: TraceEvent) {
       if (event.type !== 'model.call') return write(event)
-      for (const key of Object.keys(total) as (keyof Usage)[]) total[key] += event.usage[key]
+      add(total, event.usage)
       write({ ...event, costUsd: cost(model, event.usage) })
     },
     end(error?: unknown) {

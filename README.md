@@ -62,6 +62,39 @@ An instance declares which servers and tools it uses; the host decides where a s
 npm start -- --agent ask "<question>Why multi-repo?</question>"
 ```
 
+## Runtime worker
+
+`src/function.ts` is the second transport: an Azure Function triggered by the Service Bus queue `jobs`, reporting through the queue `events` ([ADR-007](https://github.com/mastrocola-dev/docs/blob/main/adr/007-agent-runtime.md)). It stores nothing.
+
+| Message on `jobs` | Behavior |
+|---|---|
+| `{ v: 1, type: 'run', jobId, instance: 'ask', input: { question } }` | runs the instance and publishes events |
+| `{ v: 1, type: 'warm' }` | discarded; it only wakes the instance |
+| anything else | discarded: unknown fields are ignored, unknown types, versions and instances are dropped |
+
+| Event on `events` | When |
+|---|---|
+| `{ type: 'started' }` | before any spending; a failure to publish it aborts the job |
+| `{ type: 'step', kind: 'model' \| 'tool', name? }` | after each model or tool call |
+| `{ type: 'completed', output, costUsd }` | answer validated and sources verified |
+| `{ type: 'failed', reason, costUsd }` | `timeout`, `budget`, `redelivered` or `error` |
+
+Every event carries `v`, `jobId` and a `seq` starting at 0, because the queue does not guarantee order.
+
+- A redelivered message (`deliveryCount > 1`) is failed, never run again, so a crash cannot be billed twice.
+- The question is wrapped in `<question>` tags after removing any such tag written by the visitor.
+- The answer must fit the limits (1500 characters, five sources) and every source must be a path returned by `list_documents`; otherwise the job fails. An out-of-scope answer is reduced to its flag.
+- Failure details go to the log, never into an event. Logs carry call metadata only.
+
+`src/worker.ts` holds all of this behind three ports (`connect`, `publish`, `log`) and is tested with fakes. `src/function.ts` only wires Azure in:
+
+| Setting | Use |
+|---|---|
+| `ANTHROPIC_API_KEY` | Key Vault reference resolved by the platform |
+| `ServiceBus__fullyQualifiedNamespace`, `ServiceBus__credential`, `ServiceBus__clientId` | identity-based trigger connection; the namespace is also the address events are sent to |
+| `AZURE_CLIENT_ID` | user-assigned identity that requests tokens |
+| `MCP_DOCS_URL`, `MCP_DOCS_AUDIENCE` | address of the remote `docs` server and audience of its token |
+
 ## Guardrails
 
 | Guardrail | Scope | On breach |
@@ -123,4 +156,6 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **Servers do not inherit the environment.** The MCP SDK passes only a safe default set of variables, so `ANTHROPIC_API_KEY` never reaches a tool server.
 - **MCP servers run from sibling checkouts, not packages.** Node refuses type stripping inside `node_modules`, so packaging a server would require a build. Locally the host starts servers from their checkouts; in the cloud each server is its own function app, reached over streamable HTTP.
 - **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases. `lineWidth: 320` is the author's choice: lines are not wrapped by the formatter.
-- **Minimal dependencies.** `@anthropic-ai/sdk`, `@modelcontextprotocol/client` and `zod` at runtime; CLI built on `node:util` and `node:stream`.
+- **Events are sent over the Service Bus REST API, not an output binding.** A binding delivers its messages when the function returns, so progress would arrive together with the result. One `fetch` per event with the identity's token keeps progress live without an SDK.
+- **Tokens come from the platform's identity endpoint.** A few lines of `fetch` replace `@azure/identity`; the same call serves Service Bus and the `docs` server.
+- **Minimal dependencies.** `@anthropic-ai/sdk`, `@modelcontextprotocol/client` and `zod` at runtime, plus `@azure/functions` for the worker; CLI built on `node:util` and `node:stream`.
