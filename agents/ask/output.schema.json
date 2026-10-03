@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "outOfScope": { "type": "boolean", "description": "True when the question is not about the mastrocola.dev architecture" },
+    "answer": { "type": "string", "description": "Plain-text answer, at most 1500 characters; empty when outOfScope" },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string", "description": "Document path, e.g. adr/001-multi-repo.md" },
+      "description": "Paths of the documents the answer relies on, at most five; empty when outOfScope"
+    }
+  },
+  "required": ["outOfScope", "answer", "sources"],
+  "additionalProperties": false
+}

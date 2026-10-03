@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -52,4 +52,11 @@ test('reads the output schema when present', async () => {
 
 test('rejects an output schema that is not an object', async () => {
   await assert.rejects(loadAgent(await instance(base, ['not', 'an', 'object'])))
+})
+
+test('loads every shipped instance', async () => {
+  const names = await readdir('agents')
+  const configs = await Promise.all(names.map((name) => loadAgent(join('agents', name))))
+  assert.deepEqual(names, ['adr-index', 'ask', 'default', 'docs'])
+  assert.ok(configs.every((config) => config.system.trim()))
 })

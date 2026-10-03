@@ -1,15 +1,19 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
-import { Client } from '@modelcontextprotocol/client'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { McpServer } from './config.ts'
 import type { Toolbox } from './loop.ts'
 
+export type Remote = { url: string; headers?: Record<string, string> }
+
 const maxTimerDelay = 2 ** 31 - 1
 
-async function open(name: string, server: McpServer) {
+const transport = (server: McpServer, remote?: Remote) => (remote ? new StreamableHTTPClientTransport(new URL(remote.url), { requestInit: { headers: remote.headers } }) : new StdioClientTransport({ command: server.command, args: server.args }))
+
+async function open(name: string, server: McpServer, remote?: Remote) {
   const client = new Client({ name: 'service-agent', version: '0.1.0' })
   try {
-    await client.connect(new StdioClientTransport({ command: server.command, args: server.args }))
+    await client.connect(transport(server, remote))
     const { tools } = await client.listTools()
     const missing = server.tools.filter((allowed) => !tools.some((tool) => tool.name === allowed))
     if (missing.length) throw new Error(`Unknown tools on ${name}: ${missing.join(', ')}`)
@@ -20,8 +24,8 @@ async function open(name: string, server: McpServer) {
   }
 }
 
-export async function connect(servers: Record<string, McpServer>): Promise<Toolbox & { close: () => Promise<void> }> {
-  const settled = await Promise.allSettled(Object.entries(servers).map(([name, server]) => open(name, server)))
+export async function connect(servers: Record<string, McpServer>, remotes: Record<string, Remote> = {}): Promise<Toolbox & { close: () => Promise<void> }> {
+  const settled = await Promise.allSettled(Object.entries(servers).map(([name, server]) => open(name, server, remotes[name])))
   const connections = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
   const close = async () => {
     await Promise.all(connections.map(({ client }) => client.close()))

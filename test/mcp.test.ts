@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { connect } from '../src/mcp.ts'
+import { listen } from './fixtures/http.ts'
 
 const fixture = (tools: string[]) => ({ command: 'node', args: ['test/fixtures/server.ts'], tools })
 
@@ -34,4 +35,21 @@ test('cancels a call when its signal aborts', async () => {
 
 test('fails to connect when the allowlist names an unknown tool', async () => {
   await assert.rejects(connect({ fixture: fixture(['nope']) }), /Unknown tools on fixture: nope/)
+})
+
+test('reaches a remote server over streamable HTTP with the given headers', async () => {
+  const server = await listen()
+  const remote = await connect({ fixture: fixture(['echo']) }, { fixture: { url: server.url, headers: { authorization: 'Bearer token' } } })
+  try {
+    assert.deepEqual(
+      remote.definitions.map((tool) => tool.name),
+      ['fixture__echo'],
+    )
+    assert.deepEqual(await remote.call('fixture__echo', { text: 'hi' }, signal), { content: 'hi', isError: false })
+    assert.ok(server.authorizations.length)
+    assert.ok(server.authorizations.every((value) => value === 'Bearer token'))
+  } finally {
+    await remote.close()
+    server.close()
+  }
 })
