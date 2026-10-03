@@ -90,7 +90,7 @@ Every event carries `v`, `jobId` and a `seq` starting at 0, because the queue do
 
 | Setting | Use |
 |---|---|
-| `ANTHROPIC_API_KEY` | Key Vault reference resolved by the platform |
+| `ANTHROPIC_API_KEY_URI` | Key Vault secret holding the API key, read on every invocation |
 | `ServiceBus__fullyQualifiedNamespace`, `ServiceBus__credential`, `ServiceBus__clientId` | identity-based trigger connection; the namespace is also the address events are sent to |
 | `AZURE_CLIENT_ID` | user-assigned identity that requests tokens |
 | `MCP_DOCS_URL`, `MCP_DOCS_AUDIENCE` | address of the remote `docs` server and audience of its token |
@@ -157,5 +157,6 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **MCP servers run from sibling checkouts, not packages.** Node refuses type stripping inside `node_modules`, so packaging a server would require a build. Locally the host starts servers from their checkouts; in the cloud each server is its own function app, reached over streamable HTTP.
 - **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases. `lineWidth: 320` is the author's choice: lines are not wrapped by the formatter.
 - **Events are sent over the Service Bus REST API, not an output binding.** A binding delivers its messages when the function returns, so progress would arrive together with the result. One `fetch` per event with the identity's token keeps progress live without an SDK.
-- **Tokens come from the platform's identity endpoint.** A few lines of `fetch` replace `@azure/identity`; the same call serves Service Bus and the `docs` server.
+- **Tokens come from the platform's identity endpoint.** A few lines of `fetch` replace `@azure/identity`; the same call serves Service Bus, the `docs` server and Key Vault.
+- **The API key is read from Key Vault by the worker, not injected by the platform.** A Key Vault reference in an app setting needs a property Terraform does not expose for this hosting plan and caches the value for up to a day; reading it per invocation makes a rotation effective on the next job and keeps the key out of the process environment.
 - **Minimal dependencies.** `@anthropic-ai/sdk`, `@modelcontextprotocol/client` and `zod` at runtime, plus `@azure/functions` for the worker; CLI built on `node:util` and `node:stream`.

@@ -3,8 +3,6 @@ import { app, type InvocationContext } from '@azure/functions'
 import { connect } from './mcp.ts'
 import { createWorker } from './worker.ts'
 
-const client = new Anthropic()
-
 function env(name: string) {
   const value = process.env[name]
   if (!value) throw new Error(`Missing environment variable: ${name}`)
@@ -19,10 +17,17 @@ async function bearer(resource: string) {
   return { authorization: `Bearer ${access_token}` }
 }
 
+async function secret(uri: string) {
+  const response = await fetch(`${uri}?api-version=7.4`, { headers: await bearer('https://vault.azure.net') })
+  if (!response.ok) throw new Error(`Reading ${new URL(uri).pathname} failed: ${response.status}`)
+  const { value } = (await response.json()) as { value: string }
+  return value
+}
+
 export async function worker(message: unknown, context: InvocationContext) {
-  const [serviceBus, docs] = await Promise.all([bearer('https://servicebus.azure.net'), bearer(env('MCP_DOCS_AUDIENCE'))])
+  const [serviceBus, docs, apiKey] = await Promise.all([bearer('https://servicebus.azure.net'), bearer(env('MCP_DOCS_AUDIENCE')), secret(env('ANTHROPIC_API_KEY_URI'))])
   const handle = createWorker({
-    client,
+    client: new Anthropic({ apiKey }),
     connect: (servers) => connect(servers, { docs: { url: env('MCP_DOCS_URL'), headers: docs } }),
     log: (line) => context.log(line),
     async publish(event) {
