@@ -1,6 +1,6 @@
 # service-agent
 
-Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see [agent-v1](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-v1.md), [ADR-003](https://github.com/mastrocola-dev/docs/blob/main/adr/003-language-llm-rag.md) and [ADR-004](https://github.com/mastrocola-dev/docs/blob/main/adr/004-typescript-without-build.md).
+Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see [agent-v1](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-v1.md), [ADR-003](https://github.com/mastrocola-dev/docs/blob/main/adr/003-language-llm-rag.md), [ADR-004](https://github.com/mastrocola-dev/docs/blob/main/adr/004-typescript-without-build.md) and [ADR-007](https://github.com/mastrocola-dev/docs/blob/main/adr/007-agent-runtime.md).
 
 ## Run
 
@@ -46,6 +46,21 @@ mastrocola-dev/
 ```
 
 Never give a tool server access to this repository's root: it holds `.env`.
+
+An instance declares which servers and tools it uses; the host decides where a server lives. `connect(servers, remotes)` takes an optional map of server name to `{ url, headers }`: a server named there is reached over streamable HTTP instead of being started, and its allowlist still comes from the instance. The CLI passes none, so every instance runs locally from sibling checkouts; the runtime adapter passes the deployed address and a bearer token.
+
+| Instance | Purpose | Output |
+|---|---|---|
+| `default` | no tools | text |
+| `docs` | questions about the documentation, citing paths | text |
+| `adr-index` | index of the ADRs, consumed by the site | `{ adrs: [{ id, title, status, decision, path }] }` |
+| `ask` | anonymous visitor questions at runtime | `{ outOfScope, answer, sources }` |
+
+`ask` is the only instance exposed to untrusted input. It expects the question wrapped in `<question>` tags, treats it as data, has the smallest budgets (`maxSteps: 6`, `maxRunTokens: 30000`, `runTimeoutMs: 60000`) and only read-only tools. Its prompt contains injection, it does not prevent it: the caller must still check `sources` against existing documents and render `answer` as text.
+
+```sh
+npm start -- --agent ask "<question>Why multi-repo?</question>"
+```
 
 ## Guardrails
 
@@ -100,11 +115,12 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 - **Token budget, not cost budget.** `maxRunTokens` works for every model, including those missing from `pricing.json`.
 - **`run()` takes a `Runtime`.** Client, toolbox and tracer travel together as the set every transport assembles.
 - **Loop depends on a `Toolbox`, not on MCP.** `loop.ts` defines the port; `mcp.ts` implements it. The loop is tested with fakes and knows no protocol.
+- **Where a server lives is the host's decision, not the instance's.** Instances keep the local command; a transport maps server names to remote addresses. No URL, environment name or credential enters an instance file, and the same instance runs from the CLI and at runtime.
 - **Tool allowlist is mandatory.** Each server declares the tools an instance may call; unknown names fail at startup and calls outside the list never reach the server. Server annotations such as `readOnlyHint` are hints from the server, not a security boundary.
 - **Tools namespaced as `<server>__<tool>`.** Avoids collisions across servers; server names are restricted to `[a-z0-9-]`.
 - **Tool results are capped per instance.** Results beyond `maxToolResultChars` are truncated with an explicit marker telling the model to narrow the request, so one oversized result cannot exhaust the context window. The cap lives in the loop and applies to any `Toolbox`.
 - **Tool errors go back to the model.** MCP reports failures as `isError` results, forwarded as `is_error` so the model can correct itself; transport failures abort the run.
 - **Servers do not inherit the environment.** The MCP SDK passes only a safe default set of variables, so `ANTHROPIC_API_KEY` never reaches a tool server.
-- **MCP servers run from sibling checkouts, not packages.** Node refuses type stripping inside `node_modules`, so packaging a server would require a build. Locally the host starts servers from their checkouts; in the cloud each server becomes its own Container App over streamable HTTP.
+- **MCP servers run from sibling checkouts, not packages.** Node refuses type stripping inside `node_modules`, so packaging a server would require a build. Locally the host starts servers from their checkouts; in the cloud each server is its own function app, reached over streamable HTTP.
 - **Style enforced by tooling.** Biome formats and lints (no semicolons, single quotes); `npm run check` gates CI, `npm run fix` applies it. Version pinned exactly because formatter output may change between releases. `lineWidth: 320` is the author's choice: lines are not wrapped by the formatter.
 - **Minimal dependencies.** `@anthropic-ai/sdk`, `@modelcontextprotocol/client` and `zod` at runtime; CLI built on `node:util` and `node:stream`.
