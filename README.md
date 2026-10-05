@@ -1,6 +1,6 @@
 # service-agent
 
-Agent host for mastrocola.dev. Tools are consumed exclusively through MCP; see [agent-v1](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-v1.md), [ADR-003](https://github.com/mastrocola-dev/docs/blob/main/adr/003-language-llm-rag.md), [ADR-004](https://github.com/mastrocola-dev/docs/blob/main/adr/004-typescript-without-build.md) and [ADR-007](https://github.com/mastrocola-dev/docs/blob/main/adr/007-agent-runtime.md).
+Agent host for mastrocola.dev. Tools are consumed exclusively through MCP. It runs from the command line, in pipelines and as the worker behind the question thread of [mastrocola.dev](https://mastrocola.dev), pictured end to end in [agent-runtime](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-runtime.md); see [agent-v1](https://github.com/mastrocola-dev/docs/blob/main/architecture/agent-v1.md), [ADR-003](https://github.com/mastrocola-dev/docs/blob/main/adr/003-language-llm-rag.md), [ADR-004](https://github.com/mastrocola-dev/docs/blob/main/adr/004-typescript-without-build.md) and [ADR-007](https://github.com/mastrocola-dev/docs/blob/main/adr/007-agent-runtime.md).
 
 ## Run
 
@@ -146,10 +146,10 @@ Coverage uses Node's native V8 coverage. It only reports files loaded during tes
 
 - **Native TypeScript execution.** Node 24 strips types at runtime; no build step. `tsc` runs only as a CI gate. `erasableSyntaxOnly` forbids `enum`, `namespace` and parameter properties.
 - **Own control loop.** The loop, its stop conditions and its instrumentation point are the core of this service, so the SDK tool runner is not used.
-- **One-shot CLI, not a REPL.** The agent is embedded in applications: a task goes in, a result comes out. The integration contract is `run()`; transports (CLI now, async HTTP or queue later) are thin adapters over it.
+- **One-shot CLI, not a REPL.** The agent is embedded in applications: a task goes in, a result comes out. The integration contract is `run()`; transports (the CLI and the queue-triggered worker) are thin adapters over it.
 - **Structured results through native JSON outputs.** An instance with `output.schema.json` sends it as `output_config.format`; constrained decoding applies to the final answer only, so tool calls are unaffected. The response is parsed, not validated locally: the API rejects invalid schemas, non-`end_turn` stops already fail the run, and a validator would only turn enum casing variance into a failed run.
-- **`output()` owns result extraction.** Stop-reason handling and parsing live next to the loop, so every transport (CLI now, HTTP or queue later) returns results the same way.
-- **Traces as JSON Lines through a `Tracer` port.** The loop emits model and tool calls; `trace.ts` appends them synchronously, so each event is on disk before the next step. Cost is computed when written, because a trace is a historical record: recomputing with a later price table would misstate past runs. An OpenTelemetry exporter can replace the file tracer later without touching the loop.
+- **`output()` owns result extraction.** Stop-reason handling and parsing live next to the loop, so every transport returns results the same way.
+- **Traces as JSON Lines through a `Tracer` port.** The loop emits model and tool calls; `trace.ts` appends them synchronously, so each event is on disk before the next step. Cost is computed when written, because a trace is a historical record: recomputing with a later price table would misstate past runs. The worker already plugs in a second tracer, which writes each event to the platform log as a metadata line; an OpenTelemetry exporter can replace either without touching the loop.
 - **Deadlines owned by the loop.** One `AbortSignal` bounds the run; each tool call combines it with its own timeout, so the loop can tell a slow tool (recoverable) from an exhausted run (fatal). Calls are raced against their signal, so a guardrail never depends on a client or server honoring cancellation. The MCP SDK's own request timeout is disabled to keep a single source of deadlines.
 - **Token budget, not cost budget.** `maxRunTokens` works for every model, including those missing from `pricing.json`.
 - **`run()` takes a `Runtime`.** Client, toolbox and tracer travel together as the set every transport assembles.
