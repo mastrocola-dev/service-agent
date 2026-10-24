@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { text } from 'node:stream/consumers'
 import { parseArgs } from 'node:util'
 import Anthropic from '@anthropic-ai/sdk'
@@ -7,15 +8,17 @@ import { connect } from './mcp.ts'
 import { fileTracer } from './trace.ts'
 
 const { values, positionals } = parseArgs({
-  options: { agent: { type: 'string', default: 'default' } },
+  options: { agent: { type: 'string', default: 'default' }, 'agent-dir': { type: 'string' } },
   allowPositionals: true,
 })
 
-const config = await loadAgent(`agents/${values.agent}`)
+const dir = values['agent-dir'] ?? `agents/${values.agent}`
+const name = basename(dir)
+const config = await loadAgent(dir)
 const task = positionals.join(' ') || (process.stdin.isTTY ? '' : await text(process.stdin))
 if (!task.trim()) throw new Error('No task provided: pass it as an argument or via stdin')
 
-const tracer = fileTracer(process.env.TRACE_DIR ?? 'traces', values.agent, config.model)
+const tracer = fileTracer(process.env.TRACE_DIR ?? 'traces', name, config.model)
 
 try {
   const toolbox = await connect(config.mcpServers)
