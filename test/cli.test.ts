@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -24,6 +24,22 @@ test('exits 1 for an unknown agent', () => {
   const { status, stderr } = cli(['--agent', 'missing', 'task'])
   assert.equal(status, 1)
   assert.match(stderr, /ENOENT/)
+})
+
+test('exits 1 for a missing agent directory', () => {
+  const { status, stderr } = cli(['--agent-dir', join(tempDir(), 'missing'), 'task'])
+  assert.equal(status, 1)
+  assert.match(stderr, /ENOENT/)
+})
+
+test('loads an instance from an agent directory outside the repository', () => {
+  const dir = tempDir()
+  writeFileSync(join(dir, 'agent.json'), JSON.stringify({ model: 'claude-haiku-4-5', maxSteps: 1, maxTokens: 16 }))
+  writeFileSync(join(dir, 'system.md'), 'Answer briefly.')
+  const { status, stderr } = cli(['--agent-dir', dir, 'task'])
+  assert.equal(status, 1)
+  assert.doesNotMatch(stderr, /ENOENT/)
+  assert.match(stderr, /authentication/)
 })
 
 test('accepts the task from stdin', () => {

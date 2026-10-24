@@ -22,7 +22,7 @@ The CLI runs one task to completion and exits, mirroring how an application invo
 
 ## Agent instances
 
-Each instance lives in `agents/<name>/`:
+Each instance lives in `agents/<name>/`, selected with `--agent <name>`; an application can keep its own instance elsewhere and pass `--agent-dir <path>` (paths inside `agent.json` resolve from the working directory):
 
 - `agent.json`: `model`, `maxSteps`, `maxTokens`, `maxToolResultChars` (default 20000), `runTimeoutMs` (default 120000), `toolTimeoutMs` (default 30000), optional `maxRunTokens` and `mcpServers` (strict schema; unknown keys fail)
 - `system.md`: system prompt, kept as Markdown for readable diffs
